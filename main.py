@@ -37,13 +37,12 @@ COMMANDS = [
 ]
 
 async def set_commands(app):
-    try:
-        await app.bot.set_my_commands(COMMANDS, scope=BotCommandScopeChat(USER_ADMIN_ID))
-        # Y solo para ese administrador dentro de cada grupo autorizado
-        for gid in GROUP_IDS:
-            await app.bot.set_my_commands(COMMANDS, scope=BotCommandScopeChatMember(gid, USER_ADMIN_ID))
-    except Exception as error:
-        logging.warning(f"Couldn't set commands for {USER_ADMIN_ID}: {error}")
+    scopes = [BotCommandScopeChat(USER_ADMIN_ID)] + [BotCommandScopeChatMember(gid, USER_ADMIN_ID) for gid in GROUP_IDS]
+    for scope in scopes:
+        try:
+            await app.bot.set_my_commands(COMMANDS, scope=scope)
+        except Exception as error:
+            logging.warning("Couldn't set commands for %s: %s", scope, error)
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global MAINTENANCE
