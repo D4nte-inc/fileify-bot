@@ -7,8 +7,9 @@ import traceback
 import logging
 
 from instaloader import Post
-from telegram import Update, InputMediaVideo, InputMediaPhoto, BotCommand, BotCommandScopeChat, BotCommandScopeChatMember
-from telegram.ext import MessageHandler, CommandHandler, filters, ContextTypes
+from telegram import (Update, InputMediaVideo, InputMediaPhoto, BotCommand,
+                      BotCommandScopeChat, BotCommandScopeChatMember)
+from telegram.ext import MessageHandler, CommandHandler, filters, ContextTypes, PicklePersistence
 from dotenv import load_dotenv
 from mutagen.mp4 import MP4
 from pathlib import Path
@@ -19,7 +20,6 @@ logging.basicConfig(level=logging.WARNING,
 logging.getLogger("httpx").setLevel(logging.WARNING)
 load_dotenv()
 
-MAINTENANCE = False
 LOADER: Final = instaloader.Instaloader(
     filename_pattern="file", post_metadata_txt_pattern="",
     save_metadata=False, download_video_thumbnails=False)
@@ -45,17 +45,15 @@ async def set_commands(app):
             logging.warning("Couldn't set commands for %s: %s", scope, error)
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global MAINTENANCE
-    MAINTENANCE = True
+    context.chat_data["paused"] = True
     await update.message.reply_text("Bot paused for maintenance")
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global MAINTENANCE
-    MAINTENANCE = False
+    context.chat_data["paused"] = False
     await update.message.reply_text("Bot resumed")
 
 async def get_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if MAINTENANCE:
+    if context.chat_data.get("paused"):
         return
     uid = update.effective_user.id
     if time.time() - LAST_REQUEST_TIME.get(uid, 0) < 10:
@@ -63,7 +61,8 @@ async def get_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     LAST_REQUEST_TIME[uid] = time.time()
     user_message = update.message.text or update.message.caption
 
-    match = re.search(r"instagram\.com/(?:[^/]+/)?(?:p|reels?|tv)/([A-Za-z0-9_-]+)", user_message)
+    match = re.search(
+        r"instagram\.com/(?:[^/]+/)?(?:p|reels?|tv)/([A-Za-z0-9_-]+)", user_message)
     if match:
         shortcode = match.group(1)
         try:
@@ -76,7 +75,8 @@ async def get_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media = await media_by_type(files)
 
             for i in range(0, len(media), 10):
-                await update.message.reply_media_group(media=media[i:i + 10], read_timeout=25, write_timeout=25)
+                await update.message.reply_media_group(media=media[i:i + 10],
+                                                       read_timeout=25, write_timeout=25)
         except Exception:
             traceback.print_exc()
             await update.message.reply_text("Couldn't access post")
@@ -88,7 +88,8 @@ async def media_by_type(files: list[Path]) -> list[Any]:
     media = []
     for file in files:
         if file.suffix == ".mp4":
-            media.append(InputMediaVideo(media=file.read_bytes(), duration=int(MP4(file).info.length)))
+            media.append(InputMediaVideo(media=file.read_bytes(),
+                                         duration=int(MP4(file).info.length)))
         else:
             media.append(InputMediaPhoto(media=file.read_bytes()))
     return media
@@ -99,8 +100,9 @@ def main():
 
     INSTAGRAM = r"instagram\.com/(?:[^/]+/)?(?:p|reels?|tv)/"
     ADMINS = filters.User(user_id=USER_ADMIN_ID)
+    persistence = PicklePersistence(os.getenv("FILEIFY_PERSIST_DATA", "fileify.pickle"))
 
-    app = ApplicationBuilder().token(TOKEN).post_init(set_commands).build()
+    app = ApplicationBuilder().token(TOKEN).persistence(persistence).post_init(set_commands).build()
     app.add_handler(CommandHandler("stop", stop, filters=ADMINS))
     app.add_handler(CommandHandler("resume", resume, filters=ADMINS))
     app.add_handler(
