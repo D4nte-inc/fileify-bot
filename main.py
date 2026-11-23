@@ -46,10 +46,14 @@ async def set_commands(app):
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data["paused"] = True
+    await context.application.persistence.update_chat_data(
+        update.effective_chat.id, context.chat_data)
     await update.message.reply_text("Bot paused for maintenance")
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data["paused"] = False
+    await context.application.persistence.update_chat_data(
+        update.effective_chat.id, context.chat_data)
     await update.message.reply_text("Bot resumed")
 
 async def get_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
